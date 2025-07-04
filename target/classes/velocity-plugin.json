@@ -1,1 +1,0 @@
-{"id":"secverse_queue","name":"QueueSystem","version":"1.0-SNAPSHOT","description":"A custom SecVerse Queue for Velocity","authors":["Mia_conmeow"],"dependencies":[],"main":"org.secverse.queueSystem.QueueSystem"}
