@@ -18,9 +18,13 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.secverse.queueSystem.SecVersCom.Telemetry;
+import org.secverse.queueSystem.SecVersCom.UpdateChecker;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader;
+
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,7 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-@Plugin(id = "secverse_queue", name = "QueueSystem", version = "1.0-SNAPSHOT", description = "A custom SecVerse Queue for Velocity", authors = {"Mia_conmeow"})
+
+@Plugin(id = "secverse_queue", name = "QueueSystem", version = "1.2", description = "A custom SecVerse Queue for Velocity", authors = {"Mia_conmeow"})
 public class QueueSystem {
 
     private final ProxyServer server;
@@ -47,12 +52,16 @@ public class QueueSystem {
 
     // Track when softban players joined
     private final Map<UUID, Instant> softbanJoinTimes = new ConcurrentHashMap<>();
+    private final Map<UUID, Instant> lastUpdateTimes = new ConcurrentHashMap<>();
 
-    private boolean enableLP, premiumEnabled, vipEnabled, defaultEnabled, softbanEnabled;
+    private boolean enableLP, premiumEnabled, vipEnabled, defaultEnabled, softbanEnabled,
+    CheckForUpdate, EnableTelemetry;
     public static String displayname_softban, displayname_defaultgrp, displayname_vip,
             displayname_premium, softban, defaultgrp, vip, premium, limboServer, targetServer,
             RestartMessage, JoinMessage, ConnectingMessage;
 
+    private UpdateChecker updateChecker;
+    private Telemetry telemetry;
 
 
     @Inject
@@ -64,18 +73,41 @@ public class QueueSystem {
         this.logger = logger;
         this.dataDirectory = dataDirectory;
         this.pluginContainer = lpluginContainer;
-
     }
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
         loadConfig();
+
+        Optional<PluginContainer> self = server.getPluginManager().getPlugin("secvers-queue");
+        if (self.isEmpty()) {
+            logger.warning("Could not resolve own PluginContainer. Update checks disabled.");
+            return;
+        }
+
+        if(CheckForUpdate) {
+            updateChecker = new UpdateChecker(this, server, logger, self.get());
+            updateChecker.checkNowAsync();
+
+        }
+
+        if(EnableTelemetry)  {
+            File dataDir = dataDirectory.toFile();
+            telemetry = new Telemetry(this, server, logger, dataDir, EnableTelemetry );
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("onlinePlayers", server.getPlayerCount());
+            extra.put("javaVersion", System.getProperty("java.version"));
+            telemetry.sendTelemetryAsync("SecVers Queue", "1.2", extra);
+            telemetry.startPeriodicTelemetry("SecVers Queue", "1.2", extra, 6 * 3600, 300);
+        }
+
         logger.info("[QueueSystem] Loaded config. Limbo: " + limboServer + ", Target: " + targetServer);
         server.getEventManager().register(pluginContainer, this);
         task = server.getScheduler()
                 .buildTask(pluginContainer, this::tick)
                 .repeat(5, TimeUnit.SECONDS)
                 .schedule();
+
     }
 
     private void loadConfig() {
@@ -86,14 +118,18 @@ public class QueueSystem {
                     .build();
             config = loader.load();
 
-            enableLP       = config.node("enablelp").getBoolean();
+            enableLP         = config.node("enablelp").getBoolean(false);
             limboServer      = config.node("limboserver").getString("queue");
             targetServer     = config.node("targetserver").getString("survival");
+            CheckForUpdate   = config.node("checkUpdate").getBoolean(true);
+            EnableTelemetry = config.node("EnableTelemetry").getBoolean(true);
 
             // Set defaults if missing
             config.node("enablelp").set(enableLP);
             config.node("limboserver").set(limboServer);
             config.node("targetserver").set(targetServer);
+            config.node("checkUpdate").set(CheckForUpdate);
+            config.node("EnableTelemetry").set(EnableTelemetry);
 
             // Groups
             ConfigurationNode groups = config.node("Groups");
@@ -162,19 +198,17 @@ public class QueueSystem {
             defaultQueue.offer(id);
             return;
         }
-        // Prüfe Premium Gruppe
         if (premiumEnabled && db.isPlayerInGroup(id, "group." + premium)) {
             premiumQueue.offer(id);
-            return; // bereits einsortiert, fertig
+            return;
         }
 
-        // Prüfe VIP Gruppe
+
         if (vipEnabled && db.isPlayerInGroup(id, "group." + vip)) {
             vipQueue.offer(id);
             return;
         }
 
-        // Prüfe Softban Gruppe
         if (softbanEnabled && db.isPlayerInGroup(id, "group." + softban)) {
             softbanQueue.offer(id);
             softbanJoinTimes.put(id, Instant.now());
@@ -193,6 +227,7 @@ public class QueueSystem {
         defaultQueue.remove(id);
         softbanQueue.remove(id);
         softbanJoinTimes.remove(id);
+        lastUpdateTimes.remove(id);
     }
 
     private int getPosition(UUID id) {
@@ -239,17 +274,16 @@ public class QueueSystem {
         }
         player.sendMessage(Component.text("You have been added to the " + queueName + " queue. Position: " + pos)
                 .color(NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+
+        lastUpdateTimes.put(id, Instant.now());
     }
 
-    /**
-     * Process the queue: connect each enqueued player to the target server.
-     */
+
     private void tick() {
         RegisteredServer target = server.getServer(targetServer).orElse(null);
         boolean online = target != null &&
                 target.ping().handle((pong, ex) -> ex == null).join();
         if (!online) {
-            // Server offline: status und Position in Warteschlange senden
             List<UUID> combined = new ArrayList<>();
             combined.addAll(premiumQueue);
             combined.addAll(vipQueue);
@@ -260,15 +294,20 @@ public class QueueSystem {
             for (int i = 0; i < combined.size(); i++) {
                 UUID id = combined.get(i);
                 int finalI = i;
-                server.getPlayer(id).ifPresent(player -> {
-                    String queueName;
-                    if (premiumQueue.contains(id)) queueName = displayname_premium;
-                    else if (vipQueue.contains(id)) queueName = displayname_vip;
-                    else if (defaultQueue.contains(id)) queueName = displayname_defaultgrp;
-                    else queueName = "Softban";
-                    player.sendMessage(Component.text("Server " + targetServer + " is offline. Your now in the " + queueName + "-Queue, Position " + (finalI + 1) + ".")
-                            .color(NamedTextColor.RED).decorate(TextDecoration.BOLD));
-                });
+
+                Instant lastUpdate = lastUpdateTimes.getOrDefault(id, Instant.MIN);
+                if (Duration.between(lastUpdate, Instant.now()).getSeconds() >= 10) {
+                    server.getPlayer(id).ifPresent(player -> {
+                        String queueName;
+                        if (premiumQueue.contains(id)) queueName = displayname_premium;
+                        else if (vipQueue.contains(id)) queueName = displayname_vip;
+                        else if (defaultQueue.contains(id)) queueName = displayname_defaultgrp;
+                        else queueName = "Softban";
+                        player.sendMessage(Component.text("Server " + targetServer + " is offline. Your now in the " + queueName + "-Queue, Position " + (finalI + 1) + ".")
+                                .color(NamedTextColor.RED).decorate(TextDecoration.BOLD));
+                    });
+                    lastUpdateTimes.put(id, Instant.now());
+                }
             }
             return;
         }
@@ -310,6 +349,11 @@ public class QueueSystem {
     }
 
     private void clearAll() {
-        premiumQueue.clear(); vipQueue.clear(); defaultQueue.clear(); softbanQueue.clear(); softbanJoinTimes.clear();
+        premiumQueue.clear();
+        vipQueue.clear();
+        defaultQueue.clear();
+        softbanQueue.clear();
+        softbanJoinTimes.clear();
+        lastUpdateTimes.clear();
     }
 }
