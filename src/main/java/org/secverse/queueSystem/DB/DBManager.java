@@ -13,7 +13,7 @@ import java.util.logging.Logger;
  */
 public class DBManager {
     private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
-    private static final String URL_TEMPLATE = "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+    private static final String URL_TEMPLATE = "jdbc:mysql://%s:%d/%s?useSSL=%b&allowPublicKeyRetrieval=true&serverTimezone=UTC";
 
     private final Logger logger;
     private final String url;
@@ -21,9 +21,9 @@ public class DBManager {
     private final String password;
     private Connection connection;
 
-    public DBManager(Logger logger, String host, int port, String database, String username, String password) {
+    public DBManager(Logger logger, String host, int port, String database, boolean isSSL, String username, String password) {
         this.logger = logger;
-        this.url = String.format(URL_TEMPLATE, host, port, database);
+        this.url = String.format(URL_TEMPLATE, host, port, database, isSSL);
         this.username = username;
         this.password = password;
     }

@@ -24,26 +24,9 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-/**
- * Telemetry helper for a Velocity plugin.
- *
- * Responsibilities:
- *  - Generate and persist a unique HWID per plugin installation.
- *  - Provide server name and basic metadata.
- *  - Build telemetry JSON payloads.
- *  - Send telemetry POST requests asynchronously using Velocity scheduler.
- *
- * Design notes:
- *  - Uses java.util.logging.Logger as requested.
- *  - Keeps network I/O off the main thread by scheduling tasks on the Velocity scheduler.
- *  - Endpoint is hardcoded by default and can be overridden via constructor.
- */
 public final class Telemetry {
 
-    /** Default hardcoded telemetry endpoint for SecVers. */
-    private static final String DEFAULT_ENDPOINT_URL = "https://api.secvers.org/v1/telemetry/SecVersDupeUtils";
-
-    /** File name used to persist the HWID under the plugin data directory. */
+    private static final String DEFAULT_ENDPOINT_URL = "https://api.secvers.org/v1/telemetry/VelocityQueue";
     private static final String HWID_FILENAME = "hwid.txt";
 
     private final Object pluginInstance;
@@ -78,20 +61,10 @@ public final class Telemetry {
     }
 
 
-    /**
-     * Get the persisted installation HWID.
-     *
-     * @return UUID used as HWID
-     */
     public UUID getHwid() {
         return hwid;
     }
 
-    /**
-     * Return a human readable server name. For Velocity this returns a composite of name and version.
-     *
-     * @return server name string
-     */
     public String getServerName() {
         String ver = safeString(String.valueOf(proxy.getVersion()));
         if (ver.isEmpty()) {
@@ -100,14 +73,6 @@ public final class Telemetry {
         return "Velocity " + ver;
     }
 
-    /**
-     * Build a simple telemetry payload. Extend the map for custom fields as needed.
-     *
-     * @param pluginName plugin display name
-     * @param pluginVersion plugin version
-     * @param additional optional additional fields to be merged
-     * @return JSON string payload
-     */
     public String buildPayload(String pluginName, String pluginVersion, Map<String, Object> additional) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("hwid", hwid.toString());
@@ -122,14 +87,6 @@ public final class Telemetry {
         return toJson(payload);
     }
 
-    /**
-     * Send telemetry asynchronously using the Velocity scheduler.
-     * If telemetry is disabled or endpoint is blank, nothing is sent.
-     *
-     * @param pluginName plugin display name
-     * @param pluginVersion plugin version
-     * @param additional optional additional fields
-     */
     public void sendTelemetryAsync(String pluginName, String pluginVersion, Map<String, Object> additional) {
         if (!telemetryEnabled) {
             logger.info("[Telemetry] Disabled in configuration. Skipping send.");
@@ -150,46 +107,7 @@ public final class Telemetry {
                 .schedule();
     }
 
-    /**
-     * Optionally schedule periodic telemetry pings at a fixed interval.
-     * First send happens after the initial delay.
-     *
-     * @param pluginName plugin display name
-     * @param pluginVersion plugin version
-     * @param additional optional additional fields
-     * @param intervalSeconds interval in seconds between sends, must be greater than zero
-     * @param initialDelaySeconds initial delay in seconds before the first send
-     */
-    public void startPeriodicTelemetry(String pluginName,
-                                       String pluginVersion,
-                                       Map<String, Object> additional,
-                                       long intervalSeconds,
-                                       long initialDelaySeconds) {
-        if (!telemetryEnabled) {
-            logger.info("[Telemetry] Disabled in configuration. Periodic sending not scheduled.");
-            return;
-        }
-        if (intervalSeconds <= 0) {
-            logger.warning("[Telemetry] Interval must be greater than zero. Periodic sending not scheduled.");
-            return;
-        }
 
-        proxy.getScheduler()
-                .buildTask(pluginInstance, () -> sendTelemetryAsync(pluginName, pluginVersion, additional))
-                .delay(initialDelaySeconds, TimeUnit.SECONDS)
-                .repeat(intervalSeconds, TimeUnit.SECONDS)
-                .schedule();
-
-        logger.info("[Telemetry] Periodic telemetry scheduled every " + intervalSeconds + " seconds.");
-    }
-
-    /**
-     * Send a JSON payload to an HTTP endpoint using POST.
-     *
-     * @param url endpoint URL
-     * @param jsonPayload JSON payload to send
-     * @throws IOException on network errors
-     */
     private void sendPost(String url, String jsonPayload) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         try {
@@ -222,11 +140,7 @@ public final class Telemetry {
         }
     }
 
-    /**
-     * Load an existing HWID from hwid.txt or create a new UUID and persist it.
-     *
-     * @return UUID used as HWID
-     */
+
     private UUID loadOrCreateHwid() {
         File file = new File(dataDirectory, HWID_FILENAME);
         if (file.exists()) {
@@ -253,11 +167,6 @@ public final class Telemetry {
         return newId;
     }
 
-    /**
-     * Ensure a directory exists. Attempt to create it if missing.
-     *
-     * @param dir directory file
-     */
     private void ensureDirectory(File dir) {
         if (!dir.exists()) {
             boolean created = dir.mkdirs();
@@ -267,13 +176,6 @@ public final class Telemetry {
         }
     }
 
-    /**
-     * Convert a map into a minimally escaped JSON string.
-     * Supports strings, numbers, booleans, and nested maps.
-     *
-     * @param map data map
-     * @return JSON string
-     */
     private static String toJson(Map<String, Object> map) {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
@@ -288,12 +190,6 @@ public final class Telemetry {
         return sb.toString();
     }
 
-    /**
-     * Convert a single value to JSON representation.
-     *
-     * @param val value to convert
-     * @return JSON string
-     */
     @SuppressWarnings("unchecked")
     private static String valueToJson(Object val) {
         if (val == null) return "null";
@@ -302,12 +198,7 @@ public final class Telemetry {
         return "\"" + escapeJson(val.toString()) + "\"";
     }
 
-    /**
-     * Escape a string for JSON context.
-     *
-     * @param s input string
-     * @return escaped string
-     */
+
     private static String escapeJson(String s) {
         return s.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -316,12 +207,7 @@ public final class Telemetry {
                 .replace("\t", "\\t");
     }
 
-    /**
-     * Read a response or error stream into a string.
-     *
-     * @param is input stream or null
-     * @return string contents or empty string
-     */
+
     private static String readStream(InputStream is) {
         if (is == null) return "";
         try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
@@ -336,11 +222,6 @@ public final class Telemetry {
         }
     }
 
-    /**
-     * Drain and close a response stream quietly.
-     *
-     * @param in input stream or null
-     */
     private static void drain(InputStream in) {
         if (in == null) return;
         try (BufferedInputStream bis = new BufferedInputStream(in)) {
@@ -353,22 +234,10 @@ public final class Telemetry {
         }
     }
 
-    /**
-     * Return true if a string is null, empty, or whitespace only.
-     *
-     * @param s string
-     * @return boolean
-     */
     private static boolean isBlank(String s) {
         return s == null || s.trim().isEmpty();
     }
 
-    /**
-     * Return a non-null string, empty if input is null.
-     *
-     * @param s string
-     * @return non-null string
-     */
     private static String safeString(String s) {
         return s == null ? "" : s;
     }
