@@ -115,19 +115,9 @@ public final class ConfigData {
         return limboServer;
     }
 
-    public double getWeightPremium() { return weightPremium; }
-    public double getWeightVip() { return weightVip; }
-    public double getWeightDefault() { return weightDefault; }
-    public double getWeightSoftban() { return weightSoftban; }
-
     public Duration getSoftbanMinWait() { return softbanMinWait; }
     public Duration getDequeueInterval() { return dequeueInterval; }
     public int getDequeueMaxBatch() { return dequeueMaxBatch; }
-    public boolean isDequeueAdaptive() { return dequeueAdaptive; }
-
-    public Duration getReconnectGrace() { return reconnectGrace; }
-    public Duration getEtaWindow() { return etaWindow; }
-    public double getEtaMinConfidence() { return etaMinConfidence; }
 
     public boolean isCheckUpdate() { return checkUpdate; }
     public boolean isEnableTelemetry() { return enableTelemetry; }

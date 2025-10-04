@@ -7,13 +7,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Default target selector.
- * Strategy:
- *  Filter to servers that exist and respond to a ping.
- *  Prefer the server with the fewest recent connection attempts.
- *  Fall back to round-robin if ties.
- */
 public final class DefaultTargetSelector implements TargetSelector {
 
     private final Map<String, Integer> recentAttempts = new ConcurrentHashMap<>();

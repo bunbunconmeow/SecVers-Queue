@@ -2,7 +2,6 @@ package org.secverse.queueSystem;
 
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.Subscribe;
-import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
@@ -11,7 +10,6 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -32,7 +30,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -77,7 +74,7 @@ public class QueueSystem {
             logger.info("[QueueSystem] Configuration hot-reloaded");
         });
 
-        // 2) Initialize optional DB lookup (LuckPerms-style) if enabled
+        // Initialize optional DB lookup (LuckPerms-style) if enabled
         if (cfg.isEnableLuckPerms()) {
             db = new DBManager(
                     logger,
@@ -91,7 +88,7 @@ public class QueueSystem {
             db.connect();
         }
 
-        // Optional update check and telemetry
+
         if (cfg.isCheckUpdate()) {
             updateChecker = new UpdateChecker(this, server, logger, null);
             updateChecker.checkNowAsync();

@@ -4,11 +4,6 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Default policy implementing a simple weighted round-robin across tiers:
- * premium:vip:default = 5:3:1. Softban only if others are empty.
- * This keeps progress for all tiers without starving lower tiers.
- */
 public final class DefaultWeightPolicy implements WeightPolicy {
 
     private final int wPremium;

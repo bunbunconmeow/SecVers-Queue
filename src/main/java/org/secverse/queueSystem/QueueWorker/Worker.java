@@ -91,28 +91,16 @@ public final class Worker {
         qDefault.offer(id);
     }
 
-    /**
-     * Removes a player from all queues and clears metadata.
-     */
     public void remove(Player player) {
         removeFromAllQueues(player.getUniqueId());
     }
 
-    /**
-     * Returns the 1-based visible position of the player across all eligible queues.
-     */
     public int getPosition(UUID id) {
         List<UUID> combined = combinedEligibleOrder();
         int idx = combined.indexOf(id);
         return idx >= 0 ? idx + 1 : combined.size() + 1;
     }
 
-    /**
-     * Periodic worker tick:
-     * - Select best target
-     * - Dequeue a batch according to policy
-     * - Connect players and send feedback messages with cooldown
-     */
     public void tick() {
         ConfigData cfg = GlobalCache.get();
         Optional<RegisteredServer> targetOpt = targetSelector.pickBestTarget(proxy, cfg.getTargetServers());
@@ -137,9 +125,6 @@ public final class Worker {
         }
     }
 
-    /**
-     * Selects the next eligible UUID using current policy and softban eligibility.
-     */
     private UUID selectNextEligible() {
         Queue<UUID> eligibleSoftban = new ArrayDeque<>();
         Duration minWait = GlobalCache.get().getSoftbanMinWait();
@@ -156,9 +141,6 @@ public final class Worker {
         return policy.selectNext(qPremium, qVip, qDefault, eligibleSoftban);
     }
 
-    /**
-     * Notifies all queued players that no target is online, with per-player cooldown.
-     */
     private void notifyAllQueuedOffline(ConfigData cfg) {
         List<UUID> combined = combinedEligibleOrder();
         for (int i = 0; i < combined.size(); i++) {
